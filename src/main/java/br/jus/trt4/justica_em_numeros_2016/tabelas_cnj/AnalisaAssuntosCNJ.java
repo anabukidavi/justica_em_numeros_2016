@@ -51,7 +51,7 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 	private PreparedStatement psConsultaAssuntoPorID;
 	private TipoAssuntoProcessual assuntoProcessualPadrao;
 	
-	public AnalisaAssuntosCNJ(int grau, Connection conexaoPJe) throws IOException, SQLException, DadosInvalidosException, InterruptedException {
+	public AnalisaAssuntosCNJ(int grau, Connection conexaoPJe, boolean carregarArquivoDePara) throws IOException, SQLException, DadosInvalidosException, InterruptedException {
 		super();
 		
 		File arquivoAssuntos = new File("src/main/resources/tabelas_cnj/assuntos_cnj.csv");
@@ -86,7 +86,7 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 			assuntosProcessuaisDePara = new HashMap<>();
 			
 			File fileAssuntoDePara = getArquivoAssuntosDePara();
-			if (fileAssuntoDePara != null) {
+			if (carregarArquivoDePara && fileAssuntoDePara != null) {
 				
 				// Lê os assuntos do arquivo "de-para"
 				Properties propertiesDePara = new Properties();
@@ -108,14 +108,15 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 					}
 				}
 				
-				if (!assuntosMapeadosIncorretamente.isEmpty()) {
-					LOGGER.warn("");
-					LOGGER.warn("Há assuntos que estão descritos na tabela 'de-para' como válidos no CNJ, mas não estão na lista de assuntos nacionais do CNJ: ");
-					for (int codigo: assuntosMapeadosIncorretamente) {
-						LOGGER.warn("* " + codigo);
-					}
-					Auxiliar.aguardaUsuarioApertarENTERComTimeout(2);
-				}
+				// UPDATE: Não precisa mais fazer essa validação, já que há a opção de validar diretamente com o aplicativo do CNJ (parâmetro "url_validador_cnj").
+//				if (!assuntosMapeadosIncorretamente.isEmpty()) {
+//					LOGGER.warn("");
+//					LOGGER.warn("Há assuntos que estão descritos na tabela 'de-para' como válidos no CNJ, mas não estão na lista de assuntos nacionais do CNJ: ");
+//					for (int codigo: assuntosMapeadosIncorretamente) {
+//						LOGGER.warn("* " + codigo);
+//					}
+//					Auxiliar.aguardaUsuarioApertarENTERComTimeout(2);
+//				}
 			}
 		}
 		
@@ -167,7 +168,7 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 					// Variável que receberá um código de assunto que faça parte das TPUs, preenchida
 					// a partir de uma pesquisa recursiva na árvore de assuntos do processo, até
 					// encontrar algum nó pai que esteja nas TPUs.
-					int codigoPaiNacional = 0;
+					Integer codigoPaiNacional = null;
 					
 					// Limita a quantidade de nós recursivos, para evitar um possível loop infinito
 					int tentativasRecursivas = 0;
@@ -194,7 +195,7 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 							// Se ainda está pesquisando um codigoPaiNacional e encontrou um, grava
 							// seu código.
 							int codigo = rsAssunto.getInt("cd_assunto_trf");
-							if (codigoPaiNacional == 0 && assuntoExisteNasTabelasNacionais(codigo)) {
+							if (codigoPaiNacional == null && assuntoExisteNasTabelasNacionais(codigo)) {
 								codigoPaiNacional = codigo;
 							}
 							
@@ -214,11 +215,13 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 						tentativasRecursivas++;
 					}
 					
+					// UPDATE 10/07/2020: CNJ não está mais aceitando assuntos locais com "codigoPaiNacional=0", então caso não encontre um pai nacional o assunto não será informado.
+					if (codigoPaiNacional == null) {
+						LOGGER.warn("Não foi possível identificar um \"código pai nacional\" para o assunto " + assuntoLocal.getCodigoAssunto() + " - " + descricaoAssuntoLocal);
+						return null;
+					}
 					assuntoLocal.setDescricao(descricaoAssuntoLocal);
 					assuntoLocal.setCodigoPaiNacional(codigoPaiNacional);
-					if (codigoPaiNacional == 0) {
-						LOGGER.warn("Não foi possível identificar um \"código pai nacional\" para o assunto " + assuntoLocal.getCodigoAssunto() + " - " + assuntoLocal.getDescricao());
-					}
 					
 				} else {
 					throw new RuntimeException("Não foi encontrado assunto com código " + codigoAssunto + " na base do PJe!");
@@ -257,6 +260,10 @@ public class AnalisaAssuntosCNJ implements AutoCloseable {
 		} else {
 			return null;
 		}
+	}
+
+	public Map<Integer, Integer> getAssuntosProcessuaisDePara() {
+		return assuntosProcessuaisDePara;
 	}
 
 	@Override

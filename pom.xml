@@ -12,6 +12,14 @@
   
   <dependencies>
 
+		<!-- Ferramenta criada pelo TRT3 para fazer mapeamento DE-PARA de movimentos e complementos -->
+		<!-- Disponível em https://gitlab.trt15.jus.br/estatistica_cnj_jt/depara-jt-cnj -->
+		<dependency>
+			<groupId>br.jus.trt3</groupId>
+			<artifactId>depara-jt-cnj</artifactId>
+			<version>2.1</version>
+		</dependency>
+		
 		<!-- Utilizado para criar JAR com todas as dependências -->
 		<!-- https://mvnrepository.com/artifact/com.jolira/onejar-maven-plugin -->
 		<dependency>
@@ -77,6 +85,13 @@
 			<artifactId>httpmime</artifactId>
 			<!-- Não utilizar 4.5.3: Antonio Lucas encontrou uma falha que causava erro no envio ao CNJ -->
 			<version>4.5.6</version>
+		</dependency>
+		
+		<!-- Utilizado para fazer validação prévia do XML -->
+		<dependency>
+		    <groupId>com.google.code.gson</groupId>
+		    <artifactId>gson</artifactId>
+		    <version>2.8.6</version>
 		</dependency>
 		
         <!-- Utilizado por todos os testes unitários da ferramenta -->

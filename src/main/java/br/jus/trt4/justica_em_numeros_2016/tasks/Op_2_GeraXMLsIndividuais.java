@@ -3,6 +3,8 @@ package br.jus.trt4.justica_em_numeros_2016.tasks;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.sql.Array;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -21,9 +23,17 @@ import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DurationFormatUtils;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,6 +63,7 @@ import br.jus.trt4.justica_em_numeros_2016.auxiliar.IdentificaGeneroPessoa;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.NamedParameterStatement;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.Parametro;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.ProgressoInterfaceGrafica;
+import br.jus.trt4.justica_em_numeros_2016.auxiliar.ValidadorIntegridadeXMLCNJ;
 import br.jus.trt4.justica_em_numeros_2016.dto.AssuntoDto;
 import br.jus.trt4.justica_em_numeros_2016.dto.ComplementoDto;
 import br.jus.trt4.justica_em_numeros_2016.dto.DocumentoDto;
@@ -283,33 +294,45 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 				try {
 					processoJudicial = analisarProcessoJudicialCompleto(operacao.numeroProcesso);
 				} catch (Exception ex) {
-					LOGGER.warn("Erro gerando XML do processo " + operacao.numeroProcesso + " (" + grau + "): " + ex.getLocalizedMessage(), ex);
+					String mensagem = "Erro gerando XML do processo " + operacao.numeroProcesso + " (" + grau + "): " + ex.getLocalizedMessage();
+					LOGGER.warn(mensagem, ex);
 				}
 	
 				if (processoJudicial != null) {
 	
 					BenchmarkVariasOperacoes.globalInstance().inicioOperacao("Gerando XML");
 					try {
-					// Objeto que, de acordo com o padrão MNI, que contém uma lista de processos. 
-					// Nesse caso, ele conterá somente UM processo. Posteriormente, os XMLs de cada
-					// processo serão unificados, junto com os XMLs dos outros sistemas legados.
-					Processos processos = factory.createProcessos();
-					processos.getProcesso().add(processoJudicial);
-	
-					// Gera o arquivo XML temporário
-					operacao.arquivoXML.getParentFile().mkdirs();
-					jaxbMarshaller.marshal(processos, operacao.arquivoXMLTemporario);
-	
-					// Copia o XML temporário sobre o definitivo e exclui o temporário
-					FileUtils.copyFile(operacao.arquivoXMLTemporario, operacao.arquivoXML);
+						// Objeto que, de acordo com o padrão MNI, que contém uma lista de processos. 
+						// Nesse caso, ele conterá somente UM processo. Posteriormente, os XMLs de cada
+						// processo serão unificados, junto com os XMLs dos outros sistemas legados.
+						Processos processos = factory.createProcessos();
+						processos.getProcesso().add(processoJudicial);
+		
+						// Gera o arquivo XML temporário
+						operacao.arquivoXML.getParentFile().mkdirs();
+						jaxbMarshaller.marshal(processos, operacao.arquivoXMLTemporario);
+		
+						// OPCIONAL: Valida o arquivo XML com o "Programa validador de arquivos XML" do CNJ
+						try {
+							validarArquivoXML(operacao.arquivoXMLTemporario);
+							
+							// Copia o XML temporário sobre o definitivo e exclui o temporário
+							FileUtils.copyFile(operacao.arquivoXMLTemporario, operacao.arquivoXML);
+							LOGGER.debug("Processo gravado com sucesso no arquivo " + operacao.arquivoXML);
+							
+							// Apaga o arquivo temporário somente se deu certo, para que seja possível analisar problemas
+							// caso o XML não passe na validação.
+							operacao.arquivoXMLTemporario.delete();
+							
+						} catch (DadosInvalidosException ex) {
+							LOGGER.warn("O XML do processo " + operacao.numeroProcesso + " não passou na validação do CNJ" + ex.getLocalizedMessage());
+							ex.printStackTrace();
+						}
+						
 					} finally {
 						BenchmarkVariasOperacoes.globalInstance().fimOperacao();
 					}
 					
-					operacao.arquivoXMLTemporario.delete();
-	
-					LOGGER.debug("Processo gravado com sucesso no arquivo " + operacao.arquivoXML);
-	
 					// Cálculo do tempo restante
 					tempoGasto += System.currentTimeMillis() - antes;
 					qtdXMLGerados++;
@@ -324,6 +347,45 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 		LOGGER.info("Arquivos XML do " + grau + "o Grau gerados!");
 	}
 
+	/**
+	 * Valida um arquivo no "Programa validador de arquivos XML", conforme parâmetro "url_validador_cnj" das configurações
+	 *
+	 * @param arquivoXML
+	 * @throws DadosInvalidosException
+	 */
+	private void validarArquivoXML(File arquivoXML) throws DadosInvalidosException {
+		
+		String url = Auxiliar.getParametroConfiguracao(Parametro.url_validador_cnj, false);
+		if (url != null) {
+			
+			BenchmarkVariasOperacoes.globalInstance().inicioOperacao("Validando XML localmente");
+			try {
+				HttpPost post = new HttpPost(url);
+				HttpEntity entity = MultipartEntityBuilder.create().addBinaryBody("arquivo", arquivoXML).build();
+				post.setEntity(entity);
+				
+				HttpClient httpClient = HttpClients.createDefault();
+				HttpResponse response = httpClient.execute(post);
+				
+				HttpEntity result = response.getEntity();
+				String json = EntityUtils.toString(result, Charset.forName("UTF-8"));
+				
+				// Grava o resultado do validador do CNJ, se solicitado
+				if (Auxiliar.getParametroBooleanConfiguracao(Parametro.debug_gravar_relatorio_validador_cnj, false)) {
+					File debugRelatorioCNJ = new File(arquivoXML.getParentFile(), FilenameUtils.getBaseName(arquivoXML.getName()) + "_validador_cnj.json");
+					FileUtils.write(debugRelatorioCNJ, json != null ? json : "null", StandardCharsets.UTF_8);
+				}
+				
+				// Verifica se o validador do CNJ apontou algum problema
+				ValidadorIntegridadeXMLCNJ.buscarProblemasValidadorCNJ(json);
+				
+			} catch (Exception ex) {
+				throw new DadosInvalidosException("Erro identificado no validador local do CNJ", "Arquivo " + arquivoXML.getAbsolutePath() + ": " + ex.getLocalizedMessage());
+			} finally {
+				BenchmarkVariasOperacoes.globalInstance().fimOperacao();
+			}
+		}
+	}
 
 	public void prepararCacheDadosProcessos(List<String> numerosProcessos) throws SQLException {
 		
@@ -538,7 +600,7 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 		cabecalhoProcesso.setNumero(processo.getNumeroProcessoSemSinais());
 		cabecalhoProcesso.setSiglaTribunal(Auxiliar.getParametroConfiguracao(Parametro.sigla_tribunal, true));
 		cabecalhoProcesso.setGrau("G" + grau);
-		cabecalhoProcesso.setDscSistema("PJe");
+		cabecalhoProcesso.setDscSistema(1); // 1 = PJe
 		
 		// Informar se o processo tramita em sistema eletrônico ou em papel. São valores possíveis
 		// 1: Sistema Eletrônico
@@ -590,7 +652,13 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 			
 			TipoRelacaoIncidental relacao = new TipoRelacaoIncidental();
 			String numeroProcessoReferencia = processo.getProcessoReferencia().getNumeroProcesso();
-			relacao.setNumeroProcesso(numeroProcessoReferencia); // TODO: Verificar se grava número plano ou formatado (ver aqui e no número principal do processo).
+			
+			// De acordo com o validador do CNJ, deve gravar o número do processo de forma plana, sem sinais.
+			// Erro reportado:
+			// Caused by: org.xml.sax.SAXParseException; ... cvc-pattern-valid: Value '0020474-77.2016.5.04.0233' is not facet-valid with respect to pattern '\d{20}' for type 'tipoNumeroUnico'.
+			// Linha do XML:
+			// <relacaoIncidental numeroProcesso="0020474-77.2016.5.04.0233" tipoRelacao="PI" classeProcessual="1125"/>
+			relacao.setNumeroProcesso(Auxiliar.removerPontuacaoNumeroProcesso(numeroProcessoReferencia)); // TODO: Verificar se grava número plano ou formatado (ver aqui e no número principal do processo).
 			
 			// Indicar se o processo é principal ou incidental.
 			// Podem ser classificados como:
@@ -608,7 +676,13 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 		for (ProcessoDto incidenteDto : processo.getIncidentes()) {
 			TipoRelacaoIncidental relacao = new TipoRelacaoIncidental();
 			String nrProcesso = incidenteDto.getNumeroProcesso();
-			relacao.setNumeroProcesso(nrProcesso);
+			
+			// De acordo com o validador do CNJ, deve gravar o número do processo de forma plana, sem sinais.
+			// Erro reportado:
+			// Caused by: org.xml.sax.SAXParseException; ... cvc-pattern-valid: Value '0020474-77.2016.5.04.0233' is not facet-valid with respect to pattern '\d{20}' for type 'tipoNumeroUnico'.
+			// Linha do XML:
+			// <relacaoIncidental numeroProcesso="0020474-77.2016.5.04.0233" tipoRelacao="PI" classeProcessual="1125"/>
+			relacao.setNumeroProcesso(Auxiliar.removerPontuacaoNumeroProcesso(nrProcesso));
 			
 			// Indicar se o processo é principal ou incidental.
 			// Podem ser classificados como:
@@ -879,17 +953,19 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 			// Analisa o assunto, que pode ou não estar nas tabelas processuais unificadas do CNJ.
 			int codigo = assuntoDto.getCodigo();
 			TipoAssuntoProcessual assunto = analisaAssuntosCNJ.getAssunto(codigo);
-			assuntos.add(assunto);
-			encontrouAlgumAssunto = true;
-
-			// Trata o campo "assunto principal", verificando também se há mais de um assunto principal no processo.
-			boolean assuntoPrincipal = assuntoDto.isPrincipal();
-			assunto.setPrincipal(assuntoPrincipal);
-			if (assuntoPrincipal) {
-				if (encontrouAssuntoPrincipal) {
-					LOGGER.warn("Processo possui mais de um assunto principal: " + processo.getNumeroProcesso());
-				} else {
-					encontrouAssuntoPrincipal = true;
+			if (assunto != null) {
+				assuntos.add(assunto);
+				encontrouAlgumAssunto = true;
+	
+				// Trata o campo "assunto principal", verificando também se há mais de um assunto principal no processo.
+				boolean assuntoPrincipal = assuntoDto.isPrincipal();
+				assunto.setPrincipal(assuntoPrincipal);
+				if (assuntoPrincipal) {
+					if (encontrouAssuntoPrincipal) {
+						LOGGER.warn("Processo possui mais de um assunto principal: " + processo.getNumeroProcesso());
+					} else {
+						encontrouAssuntoPrincipal = true;
+					}
 				}
 			}
 		}
@@ -997,7 +1073,7 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 			// tipoResponsavelMovimento: Identificação do responsável pelo movimento: Servidor=0; Magistrado=1;
 			movimento.setTipoResponsavelMovimento(movimentoDto.isUsuarioMagistrado() ? 1 : 0);
 			
-			analisaMovimentosCNJ.preencheDadosMovimentoCNJ(movimento, movimentoDto.getCodMovimentoCNJ(), movimentoDto.getTextoMovimento(), movimentoDto.getTextoEvento());
+			analisaMovimentosCNJ.preencheDadosMovimentoCNJ(processo, movimento, movimentoDto);
 			movimentos.add(movimento);
 			LocalDateTime dataMovimento = movimentoDto.getDataAtualizacao();
 
@@ -1154,7 +1230,7 @@ public class Op_2_GeraXMLsIndividuais implements Closeable {
 		codigoMunicipioIBGETRT = Auxiliar.getParametroInteiroConfiguracao(Parametro.codigo_municipio_ibge_trt);
 
 		// Objeto que identificará os assuntos e movimentos processuais das tabelas nacionais do CNJ
-		analisaAssuntosCNJ = new AnalisaAssuntosCNJ(grau, conexaoBasePrincipal);
+		analisaAssuntosCNJ = new AnalisaAssuntosCNJ(grau, conexaoBasePrincipal, true);
 		analisaMovimentosCNJ = new AnalisaMovimentosCNJ(grau, conexaoBasePrincipal);
 		analisaClassesProcessuaisCNJ = new AnalisaClassesProcessuaisCNJ(grau);
 	}

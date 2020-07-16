@@ -32,12 +32,38 @@ IMPORTANTE: Cada uma das tarefas (classes do pacote "br.jus.trt4.justica_em_nume
 
 2. Importe este projeto no Eclipse. É necessário ter as seguintes ferramentas instaladas:
    * Eclipse
-   * Java 1.8 ou superior (necessária para executar o JAR do CNJ)
+   * Java 1.8 ou superior
    * Apache Maven (pode ser necessária configuração de proxy para baixar dependências)
 
-3. Leia as instruções do arquivo "CHECKLIST_RESUMO.txt", que conterá todos os
+3. Será preciso baixar manualmente a ferramenta "de-para" de movimentos e complementos, desenvolvida
+   pelo TRT3. O repositório desta ferramenta está disponível em https://gitlab.trt15.jus.br/estatistica_cnj_jt/depara-jt-cnj ,
+   mas deve ser solicitado o acesso no GitLab. Depois de baixar o código-fonte, acessar a
+   pasta raiz do projeto "depara-jt-cnj" em um terminal e digitar: "mvn clean package install".
+   Pode ser preciso, também, atualizar o "pom.xml" deste projeto para referenciar novas versões do "depara-jt-cnj".
+
+4. Leia as instruções do arquivo "CHECKLIST_RESUMO.txt", que conterá todos os
    passos que precisarão ser executados.
    
+
+
+========== Desenvolvimento - Perguntas frequentes ==========
+
+Se for necessário atualizar a estrutura de classes baseada em nova versão do arquivo XSD do CNJ:
+1. Excluir os dados do package "br.jus.cnj.modeloDeTransferenciaDeDados"
+2. No Eclipse, selecionar "File", "New", "Other", "JAXB Classes from Schema", selecionar o novo arquivo XSD, definir package de destino "br.jus.cnj.modeloDeTransferenciaDeDados", confirmar.
+
+
+
+O envio de dados ao CNJ via serviços REST depende da geração de uma keystore que contenha os certificados
+de homologação e de produção do CNJ. Esta keystore fica gravada no arquivo src/main/resources/certificados_rest_cnj/keystore/cnj.keystore
+e contém os certificados gravados na pasta src/main/resources/certificados_rest_cnj/certificados.
+Se os certificados não estiverem corretos, ocorrerá um erro no envio:
+     PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target.
+Nesse caso, se for preciso atualizar algum certificado da keystore, seguir os passos abaixo:
+1. Gravar os novos certificados na pasta "src/main/resources/certificados_rest_cnj/certificados"
+2. Em um terminal Linux, abrir a pasta "src/main/resources/certificados_rest_cnj"
+3. Executar o script "_importar_certificados_para_keystore.sh"
+
 
 
 ========== Características técnicas / Funcionamento avançado ==========
@@ -175,14 +201,6 @@ IMPORTANTE: Cada uma das tarefas (classes do pacote "br.jus.trt4.justica_em_nume
   os complementos estão sendo preenchidos da mesma forma, como texto.
 
 
-* O envio de dados ao CNJ via serviços REST depende da geração de uma keystore que contenha os certificados
-  de homologação e de produção do CNJ. Esta keystore fica gravada no arquivo src/main/resources/certificados_rest_cnj/keystore/cnj.keystore
-  e contém os certificados gravados na pasta src/main/resources/certificados_rest_cnj/certificados.
-  Se for preciso atualizar algum certificado da keystore, seguir os passos abaixo:
-  1. Gravar os novos certificados na pasta "src/main/resources/certificados_rest_cnj/certificados"
-  2. Em um terminal Linux, abrir a pasta "src/main/resources/certificados_rest_cnj"
-  3. Executar o script "_importar_certificados_para_keystore.sh"
-  
 
 ========== Dúvidas / Esclarecimentos / Pendências ==========
 
