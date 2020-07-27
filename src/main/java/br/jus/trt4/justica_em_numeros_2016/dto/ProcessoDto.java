@@ -45,18 +45,21 @@ public class ProcessoDto {
 		this.classeJudicial = new ClasseJudicialDto();
 		this.classeJudicial.setCodigo(rsProcesso.getInt("cd_classe_judicial"));
 		this.classeJudicial.setDescricao(rsProcesso.getString("ds_classe_judicial"));
+		this.classeJudicial.setRecursal("S".equals(rsProcesso.getString("in_recursal")));
 		
 		if (somenteProcessoEClasse) {
 			return;
 		}
 		
-		this.numeroInstancia = rsProcesso.getInt("nr_instancia");
+		// UPDATE: NÃO PEGA a instância do banco de dados, pois a grande maioria dos registros no segundo grau estão com nr_instancia NULAS
+		// this.numeroInstancia = rsProcesso.getInt("nr_instancia");
 		this.segredoJustica = "S".equals(rsProcesso.getString("in_segredo_justica"));
 		this.dataAutuacao = Auxiliar.getCampoLocalDateTimeOrNull(rsProcesso, "dt_autuacao");
 		this.valorCausa = Auxiliar.getCampoDoubleOrNull(rsProcesso, "vl_causa");
 		
 		this.orgaoJulgador = new OrgaoJulgadorDto();
 		this.orgaoJulgador.setIdMunicipioIBGE(rsProcesso.getInt("id_municipio_ibge"), rsProcesso.getString("ds_orgao_julgador"));
+		this.orgaoJulgador.setCodigoServentiaJudiciariaLegado(rsProcesso.getInt("cd_orgao_julgador"));
 		
 		if (rsProcesso.getString("id_proc_referencia") != null) {
 			this.processoReferencia = new ProcessoDto();
@@ -84,6 +87,10 @@ public class ProcessoDto {
 		return numeroInstancia;
 	}
 	
+	public void setNumeroInstancia(int numeroInstancia) {
+		this.numeroInstancia = numeroInstancia;
+	}
+	
 	public boolean isSegredoJustica() {
 		return segredoJustica;
 	}
@@ -98,6 +105,10 @@ public class ProcessoDto {
 	
 	public ClasseJudicialDto getClasseJudicial() {
 		return classeJudicial;
+	}
+	
+	public void setClasseJudicial(ClasseJudicialDto classeJudicial) {
+		this.classeJudicial = classeJudicial;
 	}
 	
 	public OrgaoJulgadorDto getOrgaoJulgador() {

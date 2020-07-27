@@ -10,8 +10,8 @@ import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import br.jus.trt4.justica_em_numeros_2016.auxiliar.AcumuladorExceptions;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.Auxiliar;
-import br.jus.trt4.justica_em_numeros_2016.auxiliar.DadosInvalidosException;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.ProgressoInterfaceGrafica;
 
 /**
@@ -24,6 +24,11 @@ import br.jus.trt4.justica_em_numeros_2016.auxiliar.ProgressoInterfaceGrafica;
  * reexecutando a classe. O controle das operações já executadas ficará no arquivo "operacao_atual.dat", dentro
  * da pasta "output/<TIPO_CARGA_XML>_backup_operacao_completa"
  * 
+ * TODO: Tentar fazer uma nova operação completa, com processamento paralelo (enquanto alguns estão gerando, outros estão enviando, outros estão conferindo protocolo), como uma linha de produção.
+ * Para acompanhar, gerar constantemente um arquivo HTML que, ao ser aberto no navegador, mostra o status de cada uma das fases, os totais, os erros que precisam ser resolvidos,
+ * uma barra de progresso com várias cores (cada fase), instruções sobre como resolver os problemas encontrados. Esse HTML pode fazer refresh sozinho, para dar impressão de ser dinâmico.
+ * Ou então abrir uma porta TCP, acessível pelo navegador, onde dê para acompanhar.
+ *
  * @author felipe.giotto@trt4.jus.br
  */
 public class Op_X_OperacaoCompleta {
@@ -35,8 +40,8 @@ public class Op_X_OperacaoCompleta {
 	    
 		OP_1_BAIXAR_LISTA                  (100),
 		OP_2_GERAR_XMLS_INDIVIDUAIS        (200),
-		OP_3_UNIFICA_ARQUIVOS_XML          (300), 
 		OP_4_VALIDA_ENVIA_ARQUIVOS_CNJ     (400), 
+		OP_5_CONFERE_PROTOCOLOS_CNJ        (500), 
 		OP_9_ULTIMOS_BACKUPS               (900);
 		
 	    private int ordem;
@@ -107,15 +112,6 @@ public class Op_X_OperacaoCompleta {
 			}
 		});
 
-		// CHECKLIST: 7. Execute a classe "Op_3_UnificaArquivosXML"
-		executaOperacaoSeAindaNaoFoiExecutada(ControleOperacoes.OP_3_UNIFICA_ARQUIVOS_XML, new Operacao() {
-
-			@Override
-			public void run() throws Exception {
-				Op_3_UnificaArquivosXML.main(null);
-			}
-		});
-
 		// CHECKLIST: 9. Execute a classe "Op_4_ValidaEnviaArquivosCNJ", ...
 		executaOperacaoSeAindaNaoFoiExecutada(ControleOperacoes.OP_4_VALIDA_ENVIA_ARQUIVOS_CNJ, new Operacao() {
 			
@@ -123,16 +119,25 @@ public class Op_X_OperacaoCompleta {
 			public void run() throws Exception {
 				
 				// Envia os XMLs ao CNJ
-				Op_4_ValidaEnviaArquivosCNJ.validarEnviarArquivosCNJ(false);
+				Op_4_ValidaEnviaArquivosCNJ.validarEnviarArquivosCNJ(true);
 			}
 		});
 		
+		// CHECKLIST: TODO
+		executaOperacaoSeAindaNaoFoiExecutada(ControleOperacoes.OP_5_CONFERE_PROTOCOLOS_CNJ, new Operacao() {
+
+			@Override
+			public void run() throws Exception {
+				Op_5_ConfereProtocolosCNJ.consultarProtocolosCNJ(true);
+			}
+		});
+
 		// CHECKLIST: 12. Efetue backup dos seguintes dados, para referência futura: ...
 		executaOperacaoSeAindaNaoFoiExecutada(ControleOperacoes.OP_9_ULTIMOS_BACKUPS, new Operacao() {
 			
 			@Override
 			public void run() throws Exception {
-				Op_5_BackupConfiguracoes.main(null);
+				Op_6_BackupConfiguracoes.main(null);
 			}
 		});
 		
@@ -165,7 +170,7 @@ public class Op_X_OperacaoCompleta {
 			LOGGER.info("Operação " + descricaoOperacao + " concluída!");
 
 			// Se algum problema foi identificado, aborta.
-			if (DadosInvalidosException.getQtdErros() > 0) {
+			if (AcumuladorExceptions.instance().isExisteExceptionRegistrada()) {
 				throw new Exception("Operação " + descricaoOperacao + " abortada!");
 			}
 

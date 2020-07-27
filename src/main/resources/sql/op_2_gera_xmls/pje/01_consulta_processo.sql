@@ -13,12 +13,14 @@ SELECT
   /* classeProcessual */
   cj.cd_classe_judicial,
   cj.ds_classe_judicial,
+  cj.in_recursal,
   /* codigoLocalidade */
   ib.id_municipio_ibge,
   /* dataAjuizamento */
   pt.dt_autuacao,
   
   /*** orgaoJulgador ***/
+  0 cd_orgao_julgador, -- essa informação não será utilizada no pje, mas deve estar na query
   upper(to_ascii(oj.ds_orgao_julgador)) as ds_orgao_julgador, 
   upper(to_ascii(ojc.ds_orgao_julgador_colegiado)) as ds_orgao_julgador_colegiado,
   -- Sugestao TRT6, por causa de falha no PostgreSQL na conversão do caractere "º" para ASCII:
@@ -28,7 +30,8 @@ SELECT
   
   
   -- instancia
-  pt.nr_instancia, 
+  -- UPDATE: NÃO PEGA a instância do banco de dados, pois a grande maioria dos registros no segundo grau estão com nr_instancia NULAS
+  -- pt.nr_instancia, 
  
   /* TRT4 */
   pt.vl_causa,
@@ -50,3 +53,6 @@ LEFT  JOIN tb_classe_judicial cjref ON (cjref.id_classe_judicial = ptref.id_clas
 
 
 WHERE p.nr_processo = ANY(:numeros_processos)
+
+-- Reforça a condição da data de autuação, pois um bug no PJe fez com que houvesse mais que um processo com mesma numeração (um com data de autuação e outro sem)
+AND pt.dt_autuacao IS NOT NULL

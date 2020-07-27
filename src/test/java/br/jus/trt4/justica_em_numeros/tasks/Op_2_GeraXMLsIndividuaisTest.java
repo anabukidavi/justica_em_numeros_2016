@@ -6,8 +6,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import java.io.IOException;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -31,8 +29,8 @@ import br.jus.cnj.modeloDeTransferenciaDeDados.TipoRelacaoIncidental;
 import br.jus.cnj.modeloDeTransferenciaDeDados.TipoRepresentanteProcessual;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.AbstractTestCase;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.Auxiliar;
-import br.jus.trt4.justica_em_numeros_2016.auxiliar.DadosInvalidosException;
 import br.jus.trt4.justica_em_numeros_2016.auxiliar.Parametro;
+import br.jus.trt4.justica_em_numeros_2016.enums.BaseEmAnaliseEnum;
 import br.jus.trt4.justica_em_numeros_2016.tasks.Op_2_GeraXMLsIndividuais;
 
 /**
@@ -55,7 +53,7 @@ public class Op_2_GeraXMLsIndividuaisTest extends AbstractTestCase {
 	 */
 	@Test
 	public void testGerarProcessosEmLote() throws Exception {
-		Op_2_GeraXMLsIndividuais baixaDados = new Op_2_GeraXMLsIndividuais(2);
+		Op_2_GeraXMLsIndividuais baixaDados = new Op_2_GeraXMLsIndividuais(2, BaseEmAnaliseEnum.PJE);
 		try {
 			baixaDados.prepararConexao();
 			List<String> numeros = new ArrayList<>();
@@ -725,9 +723,9 @@ Em <nomeOrgao> deverão ser informados os mesmos descritivos das serventias judi
 		assertEquals(4318705, movimentoArquivamento.getOrgaoJulgador().getCodigoMunicipioIBGE()); // SAO LEOPOLDO (município sede)
 	}
 	
-	public TipoProcessoJudicial retornaDadosProcesso(int grau, String numeroProcesso) throws SQLException, IOException, DadosInvalidosException, InterruptedException {
+	public TipoProcessoJudicial retornaDadosProcesso(int grau, String numeroProcesso) throws Exception {
 		
-		Op_2_GeraXMLsIndividuais baixaDados = new Op_2_GeraXMLsIndividuais(grau);
+		Op_2_GeraXMLsIndividuais baixaDados = new Op_2_GeraXMLsIndividuais(grau, BaseEmAnaliseEnum.PJE);
 		try {
 			baixaDados.prepararConexao();
 			List<String> numeros = new ArrayList<>();
@@ -778,22 +776,15 @@ Em <nomeOrgao> deverão ser informados os mesmos descritivos das serventias judi
 	/**
 	 * Processo sem assunto deve receber um assunto principal baseado nas configurações (campos "assunto_padrao_1G" e "assunto_padrao_2G")
 	 *
+	 * Se o assunto padrão for alterado OU SE o assunto padrão for mapeado para outro, ajustar esse teste.
 	 * @throws Exception  
 	 */
 	@Test
 	public void testAssuntoPadrao() throws Exception {
 		 
-		// UPDATE: O assunto padrão está definido como "1654", mas pelas tabelas de-para de assuntos, esse assunto é mapeado para "9596"
 		TipoProcessoJudicial processoJudicial3 = retornaDadosProcesso(1, "0021172-82.2013.5.04.0332");
 		assertEquals(1, processoJudicial3.getDadosBasicos().getAssunto().size());
-		assertTrue(existeAssuntoNacionalComCodigo(9596, processoJudicial3.getDadosBasicos().getAssunto()));
-		// Antigo:
-		// TipoAssuntoLocal assuntoLocal3 = getAssuntoLocalComCodigo(1654, processoJudicial3.getDadosBasicos().getAssunto());
-		// assertEquals(1654, assuntoLocal3.getCodigoAssunto());
-		// assertEquals(864, assuntoLocal3.getCodigoPaiNacional());
-		// assertEquals("DIREITO DO TRABALHO (864) / Contrato Individual de Trabalho", assuntoLocal3.getDescricao());
-		// assertTrue(processoJudicial3.getDadosBasicos().getAssunto().get(0).isPrincipal());
-
+		assertTrue(existeAssuntoNacionalComCodigo(10652, processoJudicial3.getDadosBasicos().getAssunto()));
 	}
 	
 	@Test

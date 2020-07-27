@@ -35,6 +35,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.ThreadContext;
 
+import br.jus.trt4.justica_em_numeros_2016.enums.BaseEmAnaliseEnum;
+
 /**
  * Classe que contém métodos auxiliares utilizados nesse projeto.
  * @author fgiotto
@@ -51,14 +53,57 @@ public class Auxiliar {
 	private static final SimpleDateFormat dfDataMovimentoProcessual = new SimpleDateFormat("yyyyMMddHHmmss");
 	private static File pastaSaida = null;
 	public static final String SUFIXO_ARQUIVO_ENVIADO = ".enviado";
+	public static final String SUFIXO_PROTOCOLO = ".protocolo";
+	public static final String SUFIXO_PROTOCOLO_SUCESSO = ".sucesso";
+	public static final String SUFIXO_PROTOCOLO_ERRO = ".erro";
+	public static final String SISTEMA_JUDICIAL_APENAS_LEGADO = "APENAS_LEGADO";
+	public static final String SISTEMA_JUDICIAL_APENAS_PJE = "APENAS_PJE";
+	public static final String SISTEMA_JUDICIAL_APENAS_PJE_COM_MIGRADOS_LEGADO = "APENAS_PJE_COM_MIGRADOS_LEGADO";
+	public static final String SISTEMA_JUDICIAL_TODOS = "TODOS";
+	
+	/**
+	 * Recupera a pasta em que se encontram os arquivos sql dos diretórios 'op_1_baixa_lista_processos '
+	 * e 'op_2_gera_xmls' de acordo com o grau pesquisado e a base em análise. 
+	 * 
+	 * @param grau
+	 * @param baseEmAnaliseEnum
+	 * @return
+	 */
+	public static String getPastaResources(BaseEmAnaliseEnum baseEmAnaliseEnum) {
+		return baseEmAnaliseEnum.isBasePJe() ? "pje" : "legado";
+	}
 
+	/**
+	 * Cria uma conexão com o banco de dados do Pje ou do sistema legado, conforme a instância selecionada (1 ou 2)
+	 * e a indicacao da base em análise, lendo os dados dos parâmetros do arquivo "config.properties"
+	 * @throws SQLException
+	 */
+	public static Connection getConexao(int grau, BaseEmAnaliseEnum baseEmAnalise) throws SQLException {
+		return baseEmAnalise.isBasePJe() ? Auxiliar.getConexaoPJe(grau) : Auxiliar.getConexaoSistemaLegado(grau);
+	}
+
+	/**
+	 * Cria uma conexão com o banco de dados de outro sistema judicial legado, conforme a instância selecionada (1 ou 2),
+	 * lendo os dados dos parâmetros do arquivo "config.properties"
+	 * @throws SQLException
+	 */
+	private static Connection getConexaoSistemaLegado(int grau) throws SQLException {
+		LOGGER.info("Abrindo conexão com Sistema Legado " + grau + "G");
+		if (grau == 1) {
+			return getConexaoDasConfiguracoes(Parametro.url_legado_1g);
+		} else if (grau == 2) {
+			return getConexaoDasConfiguracoes(Parametro.url_legado_2g);
+		} else {
+			throw new SQLException("Grau inválido: " + grau);
+		}
+	}
 	
 	/**
 	 * Cria uma conexão com o banco de dados do PJe, conforme a instância selecionada (1 ou 2),
 	 * lendo os dados dos parâmetros "url_jdbc_1g" ou "url_jdbc_2g"
 	 * @throws SQLException
 	 */
-	public static Connection getConexaoPJe(int grau) throws SQLException {
+	private static Connection getConexaoPJe(int grau) throws SQLException {
 		LOGGER.info("Abrindo conexão com o PJe " + grau + "G");
 		if (grau == 1) {
 			return getConexaoDasConfiguracoes(Parametro.url_jdbc_1g);
@@ -96,14 +141,11 @@ public class Auxiliar {
 	 * @throws SQLException
 	 */
 	private static Connection getConexaoDasConfiguracoes(Parametro parametro) throws SQLException {
-		BenchmarkVariasOperacoes.globalInstance().inicioOperacao("Abrindo conexão com banco de dados");
 		try {
 			Class.forName("org.postgresql.Driver");
 			return DriverManager.getConnection(getParametroConfiguracao(parametro, true));
 		} catch (ClassNotFoundException e) {
 			throw new RuntimeException(e);
-		} finally {
-			BenchmarkVariasOperacoes.globalInstance().fimOperacao();
 		}
 	}
 
@@ -420,8 +462,24 @@ public class Auxiliar {
 	 * Retorna o arquivo onde deve ser gravada e lida a lista de processos de uma determinada
 	 * instância do PJe.
 	 */
-	public static File getArquivoListaProcessos(int grau) {
+	public static File getArquivoListaProcessosPje(int grau) {
 		return new File(prepararPastaDeSaida(), "G" + grau + "/PJe_lista_processos.txt");
+	}
+	
+	/**
+	 * Retorna o arquivo onde deve ser gravada e lida a lista de processos migrados para o PJE de uma determinada
+	 * instância do sistema legado.
+	 */
+	public static File getArquivoListaProcessosSistemaLegadoMigradosParaOPJe(int grau) {
+		return new File(prepararPastaDeSaida(), "G" + grau + "/Legado_lista_processos_migrados.txt");
+	}
+
+	/**
+	 * Retorna o arquivo onde deve ser gravada e lida a lista de processos não migrados para o PJE de uma determinada
+	 * instância do sistema legado.
+	 */
+	public static File getArquivoListaProcessosSistemaLegadoNaoMigradosParaOPje(int grau) {
+		return new File(prepararPastaDeSaida(), "G" + grau + "/Legado_lista_processos_nao_migrados.txt");
 	}
 	
 	
@@ -434,17 +492,6 @@ public class Auxiliar {
 	}
 
 
-	/**
-	 * Retorna a pasta raiz onde serão gravados e lidos os arquivos XML unificados para serem
-	 * enviados ao CNJ
-	 */
-	public static File getPastaXMLsUnificados(int grau) {
-		File pasta = new File(prepararPastaDeSaida(), "xmls_unificados/G" + grau);
-		pasta.mkdirs();
-		return pasta;
-	}
-	
-	
 	/**
 	 * Formata uma data conforme estabelecido no arquivo de intercomunicação: AAAAMMDD
 	 */
@@ -500,6 +547,7 @@ public class Auxiliar {
 	}
 
 	public static void prepararThreadLog() {
+		// TODO: Resolver problema reportado pelo Wiler: quando número de threads é maior que número de processos a gerar, dá um erro nos logs
 		ThreadContext.put("logFolder", pastaSaida.getAbsolutePath());
 	}
 
@@ -538,32 +586,16 @@ public class Auxiliar {
 		}
 	}
 	
-	private static boolean mostrouWarningLoteProcessos = false;
-	public static boolean deveMontarLotesDeProcessos() {
-		if (Auxiliar.getParametroInteiroConfiguracao(Parametro.tamanho_lote_envio_processos) == 0) {
-			if (!mostrouWarningLoteProcessos) {
-				LOGGER.info("A tarefa de unificação não será executada, pois o parâmetro 'tamanho_lote_processos' especifica o envio individual de processos");
-				mostrouWarningLoteProcessos = true;
-			}
-			return false;
-		} else {
-			return true;
-		}
-	}
-
 	/**
 	 * Lê na entrada padrão um comando do usuário e retorna em uma String
 	 */
 	public static String readStdin() {
-		BenchmarkVariasOperacoes.globalInstance().inicioOperacao("Aguardando resposta do usuario");
 		BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
 		try {
 			String valorDigitado = in.readLine();
 			return valorDigitado;
 		} catch (IOException ex) {
 			throw new RuntimeException(ex);
-		} finally {
-			BenchmarkVariasOperacoes.globalInstance().fimOperacao();
 		}
 	}
 	
@@ -603,25 +635,70 @@ public class Auxiliar {
 	    }
 	}
 	
-	public static List<String> carregarListaProcessosDoArquivo(File arquivoEntrada) throws DadosInvalidosException {
+	public static List<String> carregarListaProcessosDoArquivo(File arquivoEntrada) {
 		if (!arquivoEntrada.exists()) {
 			LOGGER.warn("Arquivo de lista de processos não existe, nenhum processo será analisado nessa instância: " + arquivoEntrada);
 			return new ArrayList<String>();
 		}
 		
-		BenchmarkVariasOperacoes.globalInstance().inicioOperacao("Carregando lista de processos do arquivo");
 		try {
 			List<String> listaProcessos = FileUtils.readLines(arquivoEntrada, "UTF-8");
 			LOGGER.info("Arquivo '" + arquivoEntrada + "' carregado com " + listaProcessos.size() + " processo(s).");
 			return listaProcessos;
+			
 		} catch (IOException ex) {
-			throw new DadosInvalidosException("Lista de processos não foi encontrada! Execute operação '1'", arquivoEntrada.toString());
-		} finally {
-			BenchmarkVariasOperacoes.globalInstance().fimOperacao();
+			throw new RuntimeException(ex);
 		}
 	}
 
+	/**
+	 * Informa onde deve ser gravado o arquivo XML de um determinado processo do PJe
+	 * @param grau
+	 * @param numeroProcesso
+	 * @return
+	 */
+	public static File gerarNomeArquivoIndividualParaProcesso(BaseEmAnaliseEnum base, int grau, String numeroProcesso) {
+		File pastaRaiz = Auxiliar.getPastaXMLsIndividuais(grau);
+		File pastaRaizPJe = new File(pastaRaiz, base.isBasePJe() ? "PJe" : "Legado");
+		return new File(pastaRaizPJe, numeroProcesso + ".xml");
+	}
+	
+	/**
+	 * Informa onde deve ser gravado o arquivo com o número do protocolo de envio de um determinado processo do PJe
+	 * 
+	 * @return
+	 */
+	public static File gerarNomeArquivoProtocoloProcessoEnviado(File arquivoXMLProcesso) {
+		return new File(arquivoXMLProcesso.getAbsolutePath() + SUFIXO_PROTOCOLO);
+	}
+	
+	/**
+	 * Informa onde deve ser gravado o arquivo que indica a ocorrência de erro na geração de um XML
+	 * 
+	 * @return
+	 */
+	public static File gerarNomeArquivoProcessoErro(File arquivoXMLProcesso) {
+		return new File(arquivoXMLProcesso.getAbsolutePath() + SUFIXO_PROTOCOLO_ERRO);
+	}
+	
+	/**
+	 * Informa onde deve ser gravado o arquivo que indica que o processo foi ACEITO com sucesso no CNJ
+	 * 
+	 * @return
+	 */
+	public static File gerarNomeArquivoProcessoSucesso(File arquivoProtocolo) {
+		return new File(arquivoProtocolo.getAbsolutePath() + SUFIXO_PROTOCOLO_SUCESSO);
+	}
 
+	/**
+	 * Informa onde deve ser gravado o arquivo que indica que o processo foi NEGADO no CNJ
+	 * 
+	 * @return
+	 */
+	public static File gerarNomeArquivoProcessoNegado(File arquivoProtocolo) {
+		return new File(arquivoProtocolo.getAbsolutePath() + SUFIXO_PROTOCOLO_ERRO);
+	}
+	
 	public static void aguardaUsuarioApertarENTERComTimeout(int minutos) throws InterruptedException, IOException {
 		
 		if (!permitirAguardarUsuarioApertarENTER) {
@@ -633,9 +710,7 @@ public class Auxiliar {
 		// Aguarda um tempo ou até usuário digite alguma coisa na STDIN
 		int segundos = 60 * minutos;
 		for (int i=0; i<segundos; i++) {
-			BenchmarkVariasOperacoes.globalInstance().inicioOperacao("Aguardando resposta do usuario");
 			Thread.sleep(1000);
-			BenchmarkVariasOperacoes.globalInstance().fimOperacao();
 			if (System.in.available() > 0) {
 				Auxiliar.readStdin();
 				break;
@@ -650,6 +725,43 @@ public class Auxiliar {
 	
 	public static boolean deveProcessarPrimeiroGrau() {
 		return getParametroBooleanConfiguracao(Parametro.gerar_xml_1G);
+	}
+	
+	public static boolean deveProcessarProcessosPje() {
+		boolean retorno = false;
+		String tipoSistema = Auxiliar.getParametroConfiguracao(Parametro.sistema_judicial, true);
+
+		if (tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_APENAS_PJE)
+				|| tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_APENAS_PJE_COM_MIGRADOS_LEGADO)
+				|| tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_TODOS)) {
+			retorno = true;
+		}
+
+		return retorno;
+	}
+
+	public static boolean deveProcessarProcessosSistemaLegadoNaoMigradosParaOPje() {
+		boolean retorno = false;
+		String tipoSistema = Auxiliar.getParametroConfiguracao(Parametro.sistema_judicial, true);
+
+		if (tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_APENAS_LEGADO)
+				|| tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_TODOS)) {
+			retorno = true;
+		}
+
+		return retorno;
+	}
+
+	public static boolean deveProcessarProcessosSistemaLegadoMigradosParaOPJe() {
+		boolean retorno = false;
+		String tipoSistema = Auxiliar.getParametroConfiguracao(Parametro.sistema_judicial, true);
+
+		if (tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_APENAS_PJE_COM_MIGRADOS_LEGADO)
+				|| tipoSistema.equals(Auxiliar.SISTEMA_JUDICIAL_TODOS)) {
+			retorno = true;
+		}
+
+		return retorno;
 	}
 	
 	public static File getArquivoconfiguracoes() {
@@ -673,5 +785,13 @@ public class Auxiliar {
 	
 	public static String removerPontuacaoNumeroProcesso(String numeroProcesso) {
 		return numeroProcesso.replaceAll("[^0-9]", "");
+	}
+	
+	public static void safeSleep(int millis) {
+		try {
+			Thread.sleep(millis);
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
 	}
 }

@@ -29,12 +29,14 @@ import org.apache.logging.log4j.Logger;
  * 
  * Cada operação deve instanciar um objeto desta classe, informar o progresso da operação e, ao final, chamar o método "close".
  * 
+ * @deprecated TODO: remover esse controle com AWT, futuramente, e centralizar o controle do progresso a partir da classe "Op_Y_OperacaoFluxoContinuo"
+ * 
  * @author felipe.giotto@trt4.jus.br
  */
 public class ProgressoInterfaceGrafica {
 
 	private static final Logger LOGGER = LogManager.getLogger(ProgressoInterfaceGrafica.class);
-	private static boolean tentouMontarInterface = false;
+	private static boolean tentarMontarInterfaceAWT = true;
 	private static boolean fecharJanelaAutomaticamente;
 	private static JFrame janelaPrincipal;
 	private static JPanel panelPrincipal;
@@ -51,8 +53,8 @@ public class ProgressoInterfaceGrafica {
 
 		// Tenta montar a interface gráfica somente uma vez. Se o usuário estiver rodando em um ambiente
 		// sem interface gráfica, não previsa ficar tentando montar a cada nova operação.
-		if (!tentouMontarInterface) {
-			tentouMontarInterface = true;
+		if (tentarMontarInterfaceAWT) {
+			tentarMontarInterfaceAWT = false;
 
 			try {
 				// Janela principal
@@ -177,6 +179,14 @@ public class ProgressoInterfaceGrafica {
 		}
 	}
 
+	public static boolean isTentarMontarInterface() {
+		return tentarMontarInterfaceAWT;
+	}
+	
+	public static void setTentarMontarInterface(boolean tentarMontarInterface) {
+		ProgressoInterfaceGrafica.tentarMontarInterfaceAWT = tentarMontarInterface;
+	}
+	
 	/**
 	 * Define um texto a ser exibido logo abaixo do nome da tarefa
 	 * 

@@ -20,7 +20,6 @@ public enum Parametro {
 	arquivo_serventias_cnj,
 	pasta_saida_padrao,
 	tamanho_lote_geracao_processos,
-	tamanho_lote_envio_processos,
 	numero_threads_simultaneas,
 	tipo_carga_xml,
 	codigo_municipio_ibge_trt,
@@ -36,6 +35,9 @@ public enum Parametro {
 	interface_grafica_fechar_automaticamente,
 	url_validador_cnj,
 	debug_gravar_relatorio_validador_cnj,
-	movimentos_aplicar_de_para,
+	url_legado_1g,
+	url_legado_2g,
+	sistema_judicial,
+	descartar_movimentos_ausentes_de_para_cnj
 	;
 }
